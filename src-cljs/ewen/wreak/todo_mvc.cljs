@@ -58,8 +58,15 @@
                     @conn conn))
 
 
-(js/setTimeout #(ds/transact! conn [{:db/id          1
+#_(js/setTimeout #(ds/transact! conn [{:db/id          1
                                 :password/label "e"}])
                3000)
+
+
+#_(let [a #js {:depth 0}
+      b #js {:depth 1 :ancestor a}
+      c #js {:depth 1 :ancestor a}]
+  (.log js/console (w/lowest-common-ancestor #{b c})))
+
 
 
