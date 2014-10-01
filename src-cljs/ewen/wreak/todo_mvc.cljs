@@ -30,6 +30,10 @@
 (def conn (load-app))
 
 
+(def c (component "c"
+                  {:render (fn [_ _ _]
+                             (html [:div#c]))}))
+
 (def b (component "b"
                   {:render (fn [_ _ _]
                              (html [:div#b]))}))
@@ -42,15 +46,19 @@
 
 (def a (component "a"
                   {:render (fn [props state _]
-                             (.log js/console (str state))
-                             (html [:div#a (b nil)]))
+                             (.log js/console (str "render-state " state))
+                             (if (:e state)
+                               (html [:div#a (b nil)])
+                               (html [:div#a (c nil)])))
                    :getInitialState (fn [props db]
                                  {:e "e"})
+                   :dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
+                                  #_(.log js/console (str tx-data))
+                                  {:e2 "e2"})
+                   :stateDidUpdate (fn [_ old-state new-state]
+                                  #_(.log js/console (str "old-state " old-state "new-state " new-state)))
                    :componentDidMount (fn []
-                                        (let [ch (async/tap (aget *component* "tx-mult") (async/chan))]
-                                          (go-loop []
-                                                   (when-let [val (async/<! ch)]
-                                                     (.log js/console val)))))}))
+                                        )}))
 
 
 (def root (w/render a {:key 1 :prop {:props "prop2"} :prop01 "prop01"}
@@ -58,7 +66,7 @@
                     @conn conn))
 
 
-#_(js/setTimeout #(ds/transact! conn [{:db/id          1
+(js/setTimeout #(ds/transact! conn [{:db/id          1
                                 :password/label "e"}])
                3000)
 
