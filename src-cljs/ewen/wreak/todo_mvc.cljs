@@ -1,5 +1,6 @@
 (ns ewen.wreak.todo-mvc
-  (:require [ewen.wreak :refer [component *component*] :as w]
+  (:require [react-google-closure]
+            [ewen.wreak :refer [component *component* mixin] :as w]
             [sablono.core :refer-macros [html]]
             [datascript :as ds]
             [domina :refer [single-node]]
@@ -30,9 +31,6 @@
 (def conn (load-app))
 
 
-(def c (component "c"
-                  {:render (fn [_ _ _]
-                             (html [:div#c]))}))
 
 (def b (component "b"
                   {:render (fn [_ _ _]
@@ -44,12 +42,16 @@
                    :in $
                    :where [?id :password/label ?label]] data)
 
+
+(def m (mixin {:dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
+                              (.log js/console (str "mixin " state))
+                              state)}))
+
 (def a (component "a"
                   {:render (fn [props state _]
                              (.log js/console (str "render-state " state))
-                             (if (:e state)
-                               (html [:div#a (b nil)])
-                               (html [:div#a (c nil)])))
+
+                             (html [:div#a (b nil)]))
                    :getInitialState (fn [props db]
                                  {:e "e"})
                    :dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
@@ -58,7 +60,9 @@
                    :stateDidUpdate (fn [_ old-state new-state]
                                   #_(.log js/console (str "old-state " old-state "new-state " new-state)))
                    :componentDidMount (fn []
-                                        )}))
+                                        )
+                   :mixins #js [m]
+                   }))
 
 
 (def root (w/render a {:key 1 :prop {:props "prop2"} :prop01 "prop01"}
@@ -75,6 +79,5 @@
       b #js {:depth 1 :ancestor a}
       c #js {:depth 1 :ancestor a}]
   (.log js/console (w/lowest-common-ancestor #{b c})))
-
 
 

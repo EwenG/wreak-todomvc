@@ -17,7 +17,7 @@
             :profiles {:dev {:plugins [[lein-cljsbuild "1.0.3"]]}}
             :cljsbuild {:builds [{:id "dev"
                                   :source-paths ["src-cljs" "/home/ewen/clojure/datascript/src"
-                                                 "/home/ewen/clojure/wreak/src-cljs"]
+                                                 "/home/ewen/clojure/wreak/src-cljs" "/home/ewen/clojure/wreak/resources/main"]
                                   :compiler {
                                               :output-to "resources/dev/cljs/todo-mvc.js"
                                               :output-dir "resources/dev/cljs/"
