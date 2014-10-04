@@ -33,8 +33,18 @@
 
 
 (def b (component "b"
-                  {:render (fn [_ _ _]
-                             (html [:div#b]))}))
+                  {:render (fn [_ state]
+                             (.log js/console (str "render-state B " state))
+                             (html [:div#b]))
+                   :dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
+                                  {:b "b"})}))
+
+(def c (component "c"
+                  {:render (fn [_ state]
+                             (.log js/console (str "render-state C " state))
+                             (html [:div#c]))
+                   :dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
+                                  {:c "c"})}))
 
 
 (defquery get-list-passwords
@@ -44,19 +54,20 @@
 
 
 (def m (mixin {:dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
-                              (.log js/console (str "mixin " state))
+                              #_(.log js/console (str "mixin " state))
                               state)}))
 
 (def a (component "a"
-                  {:render (fn [props state _]
-                             (.log js/console (str "render-state " state))
+                  {:render (fn [props state]
+                             (.log js/console (str "render-state A " state))
 
-                             (html [:div#a (b nil)]))
+                             (html [:div [:div#a (b nil)]
+                                    [:div#c (c nil)]]))
                    :getInitialState (fn [props db]
                                  {:e "e"})
                    :dbDidUpdate (fn [_ state {:keys [tx-data tx-index-keys] :as tx-data}]
                                   #_(.log js/console (str tx-data))
-                                  {:e2 "e2"})
+                                  {:e "e"})
                    :stateDidUpdate (fn [_ old-state new-state]
                                   #_(.log js/console (str "old-state " old-state "new-state " new-state)))
                    :componentDidMount (fn []
