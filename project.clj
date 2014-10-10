@@ -8,7 +8,7 @@
             :resource-paths ["resources/main"]
             :dependencies [[org.clojure/clojure "1.6.0"]
                            [org.clojure/clojurescript "0.0-2311"]
-                           #_[ewen/wreak "0.1.0"]
+                           #_[ewen/wreak "0.2.0-SNAPSHOT"]
                            [sablono "0.2.6"]
                            [domina "1.0.2"]
                            [org.clojure/core.async "0.1.338.0-5c5012-alpha"]
