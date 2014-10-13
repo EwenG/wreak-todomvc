@@ -17,11 +17,6 @@
   (ds/transact! conn [{:db/id id
                       attr   val}]))
 
-(defn get-by-attr [db attr]
-  (ds/q '[:find ?id
-          :in $ ?attr
-          :where [?id ?attr]]
-        db attr))
 
 (defn only
   "Return the only item from a query result"
@@ -43,6 +38,51 @@
                       :todo-item/done false}]))
 
 
+(defn get-todos [db]
+  (->> (ds/q '[:find ?id ?title ?done
+               :where [?id :todo-item/title ?title]
+               [?id :todo-item/done ?done]]
+             db)
+       (reduce (fn [items [id title done]]
+                 (assoc items id {:id id :title title :done done}))
+               {})))
+
+(defn retract-all-done [db]
+  (let [done-items (->> (get-todos db)
+                        (filter (comp :done val)))]
+    (mapv (fn [[k _]] [:db.fn/retractEntity k]) done-items)))
+
+(defn complete-all [db v]
+  (let [items (get-todos db)]
+    (mapv (fn [[k _]]
+            {:db/id k
+            :todo-item/done v})
+          items)))
+
+
+(defn complete-all! [conn v]
+  (ds/transact! conn [[:db.fn/call complete-all v]]))
+
+(defn clear-done! [conn]
+  (ds/transact! conn [[:db.fn/call retract-all-done]]))
+
+(defn get-filt [db]
+  (-> (ds/q '[:find ?filt
+              :where [_ :todo-mvc/filt ?filt]]
+            db)
+      only))
+
+(defn get-filt-id [db]
+  (-> (ds/q '[:find ?id
+              :where [?id :todo-mvc/filt _]]
+            db)
+      only))
+
+(defn set-filt! [conn val]
+  (ds/transact! conn [{:db/id (get-filt-id @conn)
+                      :todo-mvc/filt val}]))
+
+
 
 (def input-mixin
   (mixin {:render          (with-meta (fn [_ {:keys [title]}]
@@ -51,8 +91,7 @@
                                           (html [:input
                                                  {:type      "text"
                                                   :value       title
-                                                  :on-change #(set-attr! conn id :input-mixin/val (-> % .-target .-value))
-                                                  }])))
+                                                  :on-change #(set-attr! conn id :input-mixin/val (-> % .-target .-value))}])))
                                       {:mixin-render true})
           :getInitialState (fn [_ db]
                              (let [id (aget *component* :ewen.wreak/id)]
@@ -81,50 +120,8 @@
                                                                             27 (set-attr! conn id :input-mixin/val "")
                                                                             nil)})))))})))
 
-#_(def todo-input
-  (component "todo-input"
-             (mixin {:render          (fn [_ {:keys [title]}]
-                                        (let [conn (w/get-conn *component*)
-                                              id (aget *component* :ewen.wreak/id)]
-                                          (html [:input#new-todo
-                                                 {:type        "text"
-                                                  :val         title
-                                                  :placeholder "What needs to be done?"
-                                                  :on-change   #(set-attr! conn id :new-todo/val (-> % .-target .-value))
-                                                  :on-key-up   #(case (.-which %)
-                                                                 13 (let [v (-> title str clojure.string/trim)]
-                                                                      (if-not (empty? v) (add-todo! conn v))
-                                                                      #_(todo-input-stop))
-                                                                 27 (set-attr! conn id :new-todo/val "")
-                                                                 nil)}])))
-                     :getInitialState (fn [_ db]
-                                        (let [id (aget *component* :ewen.wreak/id)]
-                                          {:title (-> (ds/entity db id) :new-todo/val)}))
-                     :dbDidUpdate     (fn [_ state {:keys [db-after]}]
-                                        (let [id (aget *component* :ewen.wreak/id)]
-                                          (assoc state
-                                            :title
-                                            (-> (ds/entity db-after id) :new-todo/val))))}
-                    (w/component-id-mixin "todo-input"))))
 
-(comment
-  (defn todo-item []
-    (let [editing (atom false)]
-      (fn [{:keys [id done title]}]
-        [:li {:class (str (if done "completed ")
-                          (if @editing "editing"))}
-         [:div.view
-          [:input.toggle {:type      "checkbox" :checked done
-                          :on-change #(toggle id)}]
-          [:label {:on-double-click #(reset! editing true)} title]
-          [:button.destroy {:on-click #(delete id)}]]
-         (when @editing
-           [todo-edit {:class   "edit" :title title
-                       :on-save #(save id %)
-                       :on-stop #(reset! editing false)}])]))))
 
-#_(def todo-edit (with-meta todo-input
-                          {:component-did-mount #(.focus (reagent/dom-node %))}))
 
 (def todo-edit
   (component "todo-edit"
@@ -161,6 +158,36 @@
 (defn delete [conn id]
   (ds/transact! conn [[:db.fn/retractEntity id]]))
 
+
+
+(def todo-stats
+  (component "todo-stats" {:render (fn [_ {:keys [active done filt]}]
+                                     (let [conn (w/get-conn *component*)]
+                                       (html [:div
+                                              [:span#todo-count
+                                               [:strong active] " " (case active 1 "item" "items") " left"]
+                                              [:ul#filters
+                                               [:li [:a {:class (when (= :all filt) "selected")
+                                                         :on-click #(set-filt! conn :all)} "All"]]
+                                               [:li [:a {:class (when (= :active filt) "selected")
+                                                         :on-click #(set-filt! conn :active)} "Active"]]
+                                               [:li [:a {:class (when (= :done filt) "selected")
+                                                         :on-click #(set-filt! conn :done)} "Completed"]]]
+                                              (when (pos? done)
+                                                [:button#clear-completed {:on-click #(clear-done! conn)}
+                                                 "Clear completed " done])])))
+                           :getInitialState (fn [_ _]
+                                              (let [conn (w/get-conn *component*)
+                                                    items (vals (get-todos @conn))
+                                                    done (->> items (filter :done) count)
+                                                    active (- (count items) done)]
+                                                {:active active :done done :filt (get-filt @conn)}))
+                           :dbDidUpdate (fn [_ _ {:keys [db-after]}]
+                                          (let [items (vals (get-todos db-after))
+                                                done (->> items (filter :done) count)
+                                                active (- (count items) done)]
+                                            {:active active :done done :filt (get-filt db-after)}))}))
+
 (def todo-item
   (component "todo-item"
              {:render (fn [_ {:keys [id done editing title]}]
@@ -193,51 +220,13 @@
 
 
 
-(comment
-  (defn todo-app [props]
-    (let [filt (atom :all)]
-      (fn []
-        (let [items (vals @todos)
-              done (->> items (filter :done) count)
-              active (- (count items) done)]
-          [:div
-           [:section#todoapp
-            [:header#header
-             [:h1 "todos"]
-             [todo-input {:id          "new-todo"
-                          :placeholder "What needs to be done?"
-                          :on-save     add-todo}]]
-            (when (-> items count pos?)
-              [:div
-               [:section#main
-                [:input#toggle-all {:type      "checkbox" :checked (zero? active)
-                                    :on-change #(complete-all (pos? active))}]
-                [:label {:for "toggle-all"} "Mark all as complete"]
-                [:ul#todo-list
-                 (for [todo (filter (case @filt
-                                      :active (complement :done)
-                                      :done :done
-                                      :all identity) items)]
-                   ^{:key (:id todo)} [todo-item todo])]]
-               [:footer#footer
-                [todo-stats {:active active :done done :filt filt}]]])]
-           [:footer#info
-            [:p "Double-click to edit a todo"]]])))))
-
-(defn get-todos [db]
-  (->> (ds/q '[:find ?id ?title ?done
-               :where [?id :todo-item/title ?title]
-               [?id :todo-item/done ?done]]
-             db)
-       (reduce (fn [items [id title done]]
-                 (assoc items id {:id id :title title :done done}))
-               {})))
 
 
 (def todo-app
   (component "todo-app"
-               {:render (fn [_ todos]
-                          (let [items (vals todos)
+               {:render (fn [_ {:keys [todos filt]}]
+                          (let [conn (w/get-conn *component*)
+                                items (vals todos)
                                 done (->> items (filter :done) count)
                                 active (- (count items) done)]
                             (html [:div
@@ -248,30 +237,29 @@
                                     (when (-> items count pos?)
                                       [:div
                                        [:section#main
-                                        [:input#toggle-all #_{:type      "checkbox" :checked (zero? active)
-                                                            :on-change #(complete-all (pos? active))}]
+                                        [:input#toggle-all {:type      "checkbox" :checked (zero? active)
+                                                            :on-change #(complete-all! conn (pos? active))}]
                                         [:label {:for "toggle-all"} "Mark all as complete"]
                                         [:ul#todo-list
-                                         (for [todo (filter (case :all #_@filt
+                                         (for [todo (filter (case filt
                                                               :active (complement :done)
                                                               :done :done
                                                               :all identity) items)]
                                            (todo-item {:key (:id todo)
                                                        :id  (:id todo)}))]]
                                        [:footer#footer
-                                        #_[todo-stats {:active active :done done :filt filt}]]])]
+                                        (todo-stats nil)]])]
                                    [:footer#info
                                     [:p "Double-click to edit a todo"]]])))
                 :getInitialState (fn [_ db]
-                                   (get-todos db))
+                                   {:todos (sort (get-todos db)) :filt (get-filt db)})
                 :dbDidUpdate     (fn [_ _ {:keys [db-after]}]
-                                   (get-todos db-after))}))
+                                   {:todos (sort (get-todos db-after)) :filt (get-filt db-after)})}))
 
 (defn load-app []
   (let [conn (ds/create-conn)]
     (ds/transact! conn [{:db/id -1
-                        :todo-item/title "e"
-                        :todo-item/done false}])
+                         :todo-mvc/filt :all}])
     conn))
 
 (def conn (load-app))
