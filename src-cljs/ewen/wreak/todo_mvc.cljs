@@ -80,66 +80,50 @@
   (ds/transact! conn [{:db/id (get-filt-id @conn)
                        :todo-mvc/filt val}]))
 
-
-
-(def input-mixin
-  (mixin
-   {:render
-    (with-meta (fn [{{:keys [title]} :state conn :conn}]
-                 (let [id (aget *component* :ewen.wreak/id)]
-                   (html [:input
-                          {:type      "text"
-                           :value       title
-                           :on-change
-                           #(set-attr!
-                             conn
-                             id
-                             :input-mixin/val
-                             (-> % .-target .-value))}])))
-      {:mixin-render true})
-    :getInitialState (fn [{:keys [db]}]
-                       (let [id (aget *component* :ewen.wreak/id)]
-                         {:title (->
-                                  (ds/entity db id)
-                                  :input-mixin/val)}))
-    :dbDidUpdate     (fn [{state :state
-                           {:keys [db-after]} :tx-report}]
-                       (let [id (aget *component* :ewen.wreak/id)]
-                         (assoc state
-                                :title
-                                (-> (ds/entity db-after id)
-                                    :input-mixin/val))))}
-   (w/component-id-mixin "input-mixin")))
-
 (def todo-input
   (component
    "todo-input"
    (mixin
-    input-mixin
     {:render
-     (fn
-       [{{:keys [title]} :state
-         [input-mixin-render] :mixin-renders
-         conn :conn}]
+     (fn [{{:keys [title]} :state
+           conn :conn}]
        (let [id (aget *component* :ewen.wreak/id)]
-         (w/clone-element
-          input-mixin-render
-          (fn [props]
-            (merge props
-                   {:id          "new-todo"
-                    :placeholder "What needs to be done?"
-                    :onKeyUp
-                    #(case (.-which %)
-                       13 (do (add-todo!
-                               conn
-                               (-> title
-                                   str
-                                   clojure.string/trim))
-                              (set-attr!
-                               conn id :input-mixin/val ""))
-                       27 (set-attr!
-                           conn id :input-mixin/val "")
-                       nil)})))))})))
+         (html [:input
+                {:id "new-todo"
+                 :type      "text"
+                 :value     title
+                 :placeholder "What needs to be done?"
+                 :on-change
+                 #(set-attr!
+                   conn
+                   id
+                   :input-mixin/val
+                   (-> % .-target .-value))
+                 :onKeyUp
+                 #(case (.-which %)
+                    13 (do (add-todo!
+                            conn
+                            (-> title
+                                str
+                                clojure.string/trim))
+                           (set-attr!
+                            conn id :input-mixin/val ""))
+                    27 (set-attr!
+                        conn id :input-mixin/val "")
+                    nil)}])))
+     :getInitialState (fn [{:keys [db]}]
+                        (let [id (aget *component* :ewen.wreak/id)]
+                          {:title (->
+                                   (ds/entity db id)
+                                   :input-mixin/val)}))
+     :dbDidUpdate     (fn [{state :state
+                            {:keys [db-after]} :tx-report}]
+                        (let [id (aget *component* :ewen.wreak/id)]
+                          (assoc state
+                                 :title
+                                 (-> (ds/entity db-after id)
+                                     :input-mixin/val))))}
+    (w/component-id-mixin "input-mixin"))))
 
 
 
@@ -148,33 +132,38 @@
   (component
    "todo-edit"
    (mixin
-    input-mixin
     {:render
      (fn
        [{{:keys [id]} :props
          {:keys [title]} :state
-         [input-mixin-render] :mixin-renders
          conn :conn}]
-       (w/clone-element
-        input-mixin-render
-        (fn [props]
-          (merge props {:className "edit"
-                        :onKeyUp
-                        #(case (.-which %)
-                           13 (do (set-attr!
-                                   conn id :todo-item/title
-                                   (-> title
-                                       str
-                                       clojure.string/trim))
-                                  (set-attr!
-                                   conn
-                                   id
-                                   :todo-item/editing false))
-                           27 (set-attr!
-                               conn
-                               id
-                               :todo-item/editing false)
-                           nil)}))))
+       (let [mixin-id (aget *component* :ewen.wreak/id)]
+         (html [:input
+                {:type      "text"
+                 :value       title
+                 :className "edit"
+                 :on-change
+                 #(set-attr!
+                   conn
+                   mixin-id
+                   :input-mixin/val
+                   (-> % .-target .-value))
+                 :onKeyUp
+                 #(case (.-which %)
+                    13 (do (set-attr!
+                            conn id :todo-item/title
+                            (-> title
+                                str
+                                clojure.string/trim))
+                           (set-attr!
+                            conn
+                            id
+                            :todo-item/editing false))
+                    27 (set-attr!
+                        conn
+                        id
+                        :todo-item/editing false)
+                    nil)}])))
      :componentWillMount (fn [{{:keys [id]} :props conn :conn}]
                            (let [mixin-id (aget
                                            *component*
@@ -184,7 +173,20 @@
                                         (-> (ds/entity @conn id)
                                             :todo-item/title))))
      :componentDidMount (fn []
-                          (.focus (.getDOMNode *component*)))})))
+                          (.focus (.getDOMNode *component*)))
+     :getInitialState (fn [{:keys [db]}]
+                        (let [id (aget *component* :ewen.wreak/id)]
+                          {:title (->
+                                   (ds/entity db id)
+                                   :input-mixin/val)}))
+     :dbDidUpdate     (fn [{state :state
+                            {:keys [db-after]} :tx-report}]
+                        (let [id (aget *component* :ewen.wreak/id)]
+                          (assoc state
+                                 :title
+                                 (-> (ds/entity db-after id)
+                                     :input-mixin/val))))}
+    (w/component-id-mixin "input-mixin"))))
 
 
 (defn toggle [db id attr]
